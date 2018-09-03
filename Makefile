@@ -5,7 +5,7 @@
 #
 $(VERBOSE).SILENT:
 
-PRJNAME = transceive_example
+PRJNAME = ulc_example
 
 all : help
 

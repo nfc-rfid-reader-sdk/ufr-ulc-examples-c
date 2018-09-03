@@ -1,7 +1,7 @@
 /*
  ============================================================================
- Project Name: project_name
- Name        : file_name.c
+ Project Name: ulc_example
+ Name        : main.c
  Author      : d-logic (http://www.d-logic.net/nfc-rfid-reader-sdk/)
  Version     :
  Copyright   : 2017.
@@ -42,11 +42,13 @@
 void usage(void);
 void menu(char key);
 UFR_STATUS NewCardInField(uint8_t sak, uint8_t *uid, uint8_t uid_size);
-void enter_transceive(void);
-void exit_transceive(void);
-void set_user_zone(void);
-void write_user_zone(void);
-void read_user_zone(void);
+void authentication_3des(void);
+void enable_card_halt(void);
+void page_read(void);
+void page_write(void);
+void linear_read(void);
+void linear_write(void);
+void key_write(void);
 //------------------------------------------------------------------------------
 
 BOOL card_transceive_mode = FALSE;
@@ -173,23 +175,31 @@ void menu(char key)
 	switch (key)
 	{
 		case '1':
-			enter_transceive();
+			authentication_3des();
 			break;
 
 		case '2':
-			exit_transceive();
+			enable_card_halt();
 			break;
 
 		case '3':
-			set_user_zone();
+			page_read();
 			break;
 
 		case '4':
-			write_user_zone();
+			page_write();
 			break;
 
 		case '5':
-			read_user_zone();
+			linear_read();
+			break;
+
+		case '6':
+			linear_write();
+			break;
+
+		case '7':
+			key_write();
 			break;
 
 		case '\x1b':
@@ -204,17 +214,19 @@ void menu(char key)
 void usage(void)
 {
 		printf(" +------------------------------------------------+\n"
-			   " |             TRANSCEIVE EXAMPLE                 |\n"
-			   " |             AT88RF04C COMMANDS                 |\n"
+			   " |             ULTRALIGHT C SUPPORT               |\n"
+			   " |          3DES AUTHENTICATION EXAMPLE           |\n"
 			   " |              version "APP_VERSION"             |\n"
 			   " +------------------------------------------------+\n"
 			   "                              For exit, hit escape.\n");
 		printf(" --------------------------------------------------\n");
-		printf("  (1) - Enter into transceive mode\n"
-			   "  (2) - Exit from transceive mode\n"
-			   "  (3) - Set User Zone\n"
-			   "  (4) - Write User Zone\n"
-			   "  (5) - Read User Zone\n");
+		printf("  (1) - Authentication with 3DES key\n"
+			   "  (2) - Card halt enable\n"
+			   "  (3) - Read Page\n"
+			   "  (4) - Write Page\n"
+			   "  (5) - Linear Read\n"
+			   "  (6) - Linear Write\n"
+			   "  (7) - Enter 3DES key into card\n");
 }
 //------------------------------------------------------------------------------
 UFR_STATUS NewCardInField(uint8_t sak, uint8_t *uid, uint8_t uid_size)
@@ -234,164 +246,370 @@ UFR_STATUS NewCardInField(uint8_t sak, uint8_t *uid, uint8_t uid_size)
 	return UFR_OK;
 }
 //------------------------------------------------------------------------------
-void enter_transceive(void)
+bool Enter3DesKey(uint8_t *key_3des)
 {
-	UFR_STATUS status;
+	char str[100];
+	size_t str_len;
 
-	printf(" -------------------------------------------------------------------\n");
-	printf("                        Enter to transceive mode                    \n");
-	printf(" -------------------------------------------------------------------\n");
-
-	//transceive mode use HW TX_CRC and RX_CRC, RF timeout is 10000us, UART timeout is 500ms
-	status = card_transceive_mode_start(1, 1, 10000, 500);
-
-	if(status)
+	scanf("%[^\n]%*c", str);
+	str_len = hex2bin(key_3des, str);
+	if(str_len != 16)
 	{
-		printf("\nReader did not entered into transceive mode\n");
-		printf("Error code = %02X\n", status);
-		card_transceive_mode = FALSE;
+		printf("\nYou need to enter 16 hexadecimal numbers with or without spaces or with : as delimiter\n");
+		scanf("%[^\n]%*c", str);
+		str_len = hex2bin(key_3des, str);
+		if(str_len != 16)
+			return false;
 	}
-	else
-	{
-		printf("\nReader is in transceive mode\n");
-		card_transceive_mode = TRUE;
-	}
+
+	return true;
 }
 //------------------------------------------------------------------------------
-
-void exit_transceive(void)
+bool EnterPageData(uint8_t *page_data)
 {
-	UFR_STATUS status;
+	char str[100];
+	size_t str_len;
+	char key;
 
-	printf(" -------------------------------------------------------------------\n");
-	printf("                    Exit from transceive mode                       \n");
-	printf(" -------------------------------------------------------------------\n");
+	printf(" (1) - ASCI\n"
+		   " (2) - HEX\n");
 
-	status = card_transceive_mode_stop();
+	while (!_kbhit())
+		;
+	key = _getch();
 
-	if(status)
+	if(key == '1')
 	{
-		printf("\nReader did not exit from transceive mode\n");
-		printf("Error code = %02X\n", status);
-	}
-	else
-	{
-		printf("\nReader exit from transceive mode\n");
-		card_transceive_mode = FALSE;
-	}
-}
-//------------------------------------------------------------------------------
-
-void set_user_zone(void)
-{
-	UFR_STATUS status;
-	unsigned char cmd_buff[20];
-	unsigned char rcv_buff[20];
-	uint32_t rcv_len;
-
-	printf(" -------------------------------------------------------------------\n");
-	printf("                           Set user zone                            \n");
-	printf(" -------------------------------------------------------------------\n");
-
-	//CID = 0, zone number = 0, anti-tearing off
-	cmd_buff[0] = 0x01;
-	cmd_buff[1] = 0x00;
-
-	status = uart_transceive(cmd_buff, 2, rcv_buff, 3, &rcv_len);
-
-	if(status)
-	{
-		printf("\nCard communication error\n");
-		printf("Error code = %02X\n", status);
-		printf("Receive length = %d\n", rcv_len);
-		if(rcv_len > 0)
+		printf("Enter 4 ASCI characters\n");
+		scanf("%[^\n]%*c", str);
+		str_len = strlen(str);
+		if(str_len != 4)
 		{
-			printf("Card reply = \n");
-			print_hex_ln(rcv_buff, rcv_len, " ");
+			printf("\nYou need to enter 4 characters\n");
+			scanf("%[^\n]%*c", str);
+			str_len = strlen(str);
+			if(str_len != 4)
+				return false;
 		}
+		memcpy(page_data, str, 4);
+		return true;
+	}
+	else if(key == '2')
+	{
+		printf("Enter 4 hexadecimal bytes\n");
+		scanf("%[^\n]%*c", str);
+		str_len = hex2bin(page_data, str);
+		if(str_len != 16)
+		{
+			printf("\nYou need to enter 4 hexadecimal numbers with or without spaces or with : as delimiter\n");
+			scanf("%[^\n]%*c", str);
+			str_len = hex2bin(page_data, str);
+			if(str_len != 16)
+				return false;
+		}
+		return true;
 	}
 	else
-	{
-		printf("\nCard reply = \n");
-		print_hex_ln(rcv_buff, rcv_len, " ");
-	}
+		return false;
 }
 //------------------------------------------------------------------------------
+bool EnterLinearData(uint8_t *linear_data, uint16_t *linear_len)
+{
+	char str[3440];
+	size_t str_len;
+	char key;
 
-void write_user_zone(void)
+	*linear_len = 0;
+
+	printf(" (1) - ASCI\n"
+		   " (2) - HEX\n");
+
+	while (!_kbhit())
+		;
+	key = _getch();
+
+	if(key == '1')
+	{
+		printf("Enter ASCI text\n");
+		scanf("%[^\n]%*c", str);
+		str_len = strlen(str);
+		*linear_len = str_len;
+		memcpy(linear_data, str, *linear_len);
+		return true;
+	}
+	else if(key == '2')
+	{
+		printf("Enter hexadecimal bytes\n");
+		scanf("%[^\n]%*c", str);
+		str_len = hex2bin(linear_data, str);
+		*linear_len = str_len;
+		return true;
+	}
+	else
+		return false;
+}
+//----------------------------------------------------------------------------------
+
+void authentication_3des(void)
 {
 	UFR_STATUS status;
-	unsigned char cmd_buff[20];
-	unsigned char rcv_buff[20];
-	uint32_t rcv_len;
-	unsigned char i;
+	uint8_t key_3des[16];
 
 	printf(" -------------------------------------------------------------------\n");
-	printf("                         Write user zone                            \n");
+	printf("                        Authentication with 3DES key                    \n");
 	printf(" -------------------------------------------------------------------\n");
 
-	//CID = 0, zone number = 0, start address = 0, anti-tearing off, 16 data for writing
-	cmd_buff[0] = 0x03;
-	cmd_buff[1] = 0x00;
-	cmd_buff[2] = 0x00;
-	cmd_buff[3] = 15;
-	for(i = 0; i < 16; i++)
-		cmd_buff[4 + i] = i;
+	printf("\nEnter 3DES key (16 hexadecimal numbers)\n");
+	if(!Enter3DesKey(key_3des))
+	{
+		printf("\nError while key entry\n");
+		return;
+	}
 
-	status = uart_transceive(cmd_buff, 20, rcv_buff, 3, &rcv_len);
+	status = ULC_ExternalAuth_PK(key_3des);
 
 	if(status)
 	{
-		printf("\nCard communication error\n");
+		printf("\nCard does not authenticated\n");
 		printf("Error code = %02X\n", status);
-		printf("Receive length = %d\n", rcv_len);
-		if(rcv_len > 0)
-		{
-			printf("Card reply = \n");
-			print_hex_ln(rcv_buff, rcv_len, " ");
-		}
 	}
 	else
-	{
-		printf("\nCard reply = \n");
-		print_hex_ln(rcv_buff, rcv_len, " ");
-	}
+		printf("\nCard is authenticated\n");
 }
 //------------------------------------------------------------------------------
-
-void read_user_zone(void)
+void enable_card_halt(void)
 {
 	UFR_STATUS status;
-	unsigned char cmd_buff[20];
-	unsigned char rcv_buff[20];
-	uint32_t rcv_len;
 
 	printf(" -------------------------------------------------------------------\n");
-	printf("                         Read user zone                            \n");
+	printf("                      Card halt enabled                             \n");
 	printf(" -------------------------------------------------------------------\n");
 
-	//CID = 0, zone number = 0, start address = 0, anti-tearing off, 16 data for reading
-	cmd_buff[0] = 0x02;
-	cmd_buff[1] = 0x00;
-	cmd_buff[2] = 0x00;
-	cmd_buff[3] = 15;
-
-	status = uart_transceive(cmd_buff, 4, rcv_buff, 16 + 3, &rcv_len);
+	status = card_halt_enable();
 
 	if(status)
 	{
-		printf("\nCard communication error\n");
+		printf("\nCard halt operation does not enabled\n");
 		printf("Error code = %02X\n", status);
-		printf("Receive length = %d\n", rcv_len);
-		if(rcv_len > 0)
-		{
-			printf("Card reply = \n");
-			print_hex_ln(rcv_buff, rcv_len, " ");
-		}
+	}
+	else
+		printf("\nCard halt operation is enabled\n");
+}
+//------------------------------------------------------------------------------
+void page_read(void)
+{
+	UFR_STATUS status;
+	int page_nr_int;
+	uint8_t page_nr;
+	uint8_t data[16];
+
+	printf(" -------------------------------------------------------------------\n");
+	printf("                        Page data read                              \n");
+	printf(" -------------------------------------------------------------------\n");
+
+	printf("\nEnter page number (0 - 43)\n");
+	scanf("%d%*c", &page_nr_int);
+	page_nr = page_nr_int;
+
+	status = BlockRead(data, page_nr, T2T_WITHOUT_PWD_AUTH, 0);
+
+	if(status)
+	{
+		printf("\nPage read failed\n");
+		printf("Error code = %02X\n", status);
 	}
 	else
 	{
-		printf("\nCard reply = \n");
-		print_hex_ln(rcv_buff, rcv_len, " ");
+		printf("\nPage read successful\n");
+		printf("Data = ");
+		print_hex_ln(data, 4, " ");
+		printf("\n");
 	}
+}
+//-----------------------------------------------------------------------------
+void page_write(void)
+{
+	UFR_STATUS status;
+	int page_nr_int;
+	uint8_t page_nr;
+	uint8_t data[16];
+
+	printf(" -------------------------------------------------------------------\n");
+	printf("                        Page data write                             \n");
+	printf(" -------------------------------------------------------------------\n");
+
+	printf("\nEnter page number (2 - 47)\n");
+	scanf("%d%*c", &page_nr_int);
+	page_nr = page_nr_int;
+
+	printf("\nEnter page data 4 bytes or characters\n");
+	if(!EnterPageData(data))
+	{
+		printf("\nError while data entry\n");
+		return;
+	}
+
+	status = BlockWrite(data, page_nr, T2T_WITHOUT_PWD_AUTH, 0);
+
+	if(status)
+	{
+		printf("\nPage write failed\n");
+		printf("Error code = %02X\n", status);
+	}
+	else
+		printf("\nPage write successful\n");
+}
+//---------------------------------------------------------------------------
+void linear_read(void)
+{
+	UFR_STATUS status;
+	uint16_t lin_addr, lin_len, ret_bytes;
+	int lin_addr_int, lin_len_int;
+	uint8_t data[200];
+
+	printf(" -------------------------------------------------------------------\n");
+	printf("                        Linear read                                 \n");
+	printf(" -------------------------------------------------------------------\n");
+
+	printf("\nEnter linear address (0 - 143)\n");
+	scanf("%d%*c", &lin_addr_int);
+	lin_addr = lin_addr_int;
+
+	printf("\nEnter number of bytes for read\n");
+	scanf("%d%*c", &lin_len_int);
+	lin_len = lin_len_int;
+
+	status = LinearRead(data, lin_addr, lin_len, &ret_bytes, T2T_WITHOUT_PWD_AUTH, 0);
+
+	if(status)
+	{
+		printf("\nLinear read failed\n");
+		printf("Error code = %02X\n", status);
+	}
+	else
+	{
+		printf("\nLinear read successful\n");
+		printf("Data = ");
+		print_hex_ln(data, ret_bytes, " ");
+		printf("ASCI = %s\n", data);
+	}
+}
+//----------------------------------------------------------------------------------
+void linear_write(void)
+{
+	UFR_STATUS status;
+	uint16_t lin_addr, lin_len, ret_bytes;
+	int lin_addr_int, lin_len_int;
+	uint8_t data[200];
+
+	printf(" -------------------------------------------------------------------\n");
+	printf("                        Linear write                                 \n");
+	printf(" -------------------------------------------------------------------\n");
+
+	printf("\nEnter linear address (0 - 143)\n");
+	scanf("%d%*c", &lin_addr_int);
+	lin_addr = lin_addr_int;
+
+	printf("\nEnter linear data\n");
+	if(!EnterLinearData(data, &lin_len))
+	{
+		printf("\nError while data entry\n");
+		return;
+	}
+
+	status = LinearWrite(data, lin_addr, lin_len, &ret_bytes, T2T_WITHOUT_PWD_AUTH, 0);
+
+	if(status)
+	{
+		printf("\nLinear write failed\n");
+		printf("Error code = %02X\n", status);
+	}
+	else
+		printf("\nLinear write successful\n");
+}
+//----------------------------------------------------------------------------------
+void key_write(void)
+{
+	UFR_STATUS status;
+	char key;
+	uint8_t new_key[16], old_key[16];
+
+	printf(" -------------------------------------------------------------------\n");
+	printf("                 Enter 3DES key into card                           \n");
+	printf(" -------------------------------------------------------------------\n");
+
+	printf("\nSelect method for key entering into card\n");
+	printf(" (1) - Current key does not exist (authentication for access to the 3DES key pages is not required)\n"
+		   " (2) - Current key is factory (authentication for access to the 3DES key pages with factory key)\n"
+		   " (3) - Current key exist (authentication for access to the 3DESS key pages with current key\n");
+
+	while (!_kbhit())
+		;
+	key = _getch();
+
+	switch(key)
+	{
+	case '1':
+		printf("\nEnter 3DES key (16 hexadecimal numbers)\n");
+		if(!Enter3DesKey(new_key))
+		{
+			printf("\nError while key entry\n");
+			return;
+		}
+
+		status = ULC_write_3des_key_no_auth(new_key);
+
+		if(status)
+		{
+			printf("\nKey write failed\n");
+			printf("Error code = %02X\n", status);
+		}
+		else
+			printf("\nKey write successful\n");
+		break;
+	case '2':
+		printf("\nEnter 3DES key (16 hexadecimal numbers)\n");
+		if(!Enter3DesKey(new_key))
+		{
+			printf("\nError while key entry\n");
+			return;
+		}
+
+		status = ULC_write_3des_key_factory_key(new_key);
+
+		if(status)
+		{
+			printf("\nKey write failed\n");
+			printf("Error code = %02X\n", status);
+		}
+		else
+			printf("\nKey write successful\n");
+		break;
+	case '3':
+		printf("\nEnter current 3DES key (16 hexadecimal numbers)\n");
+		if(!Enter3DesKey(old_key))
+		{
+			printf("\nError while key entry\n");
+			return;
+		}
+
+		printf("\nEnter new 3DES key (16 hexadecimal numbers)\n");
+		if(!Enter3DesKey(new_key))
+		{
+			printf("\nError while key entry\n");
+			return;
+		}
+
+		status = ULC_write_3des_key(new_key, old_key);
+
+		if(status)
+		{
+			printf("\nKey write failed\n");
+			printf("Error code = %02X\n", status);
+		}
+		else
+			printf("\nKey write successful\n");
+		break;
+	}
+
 }
