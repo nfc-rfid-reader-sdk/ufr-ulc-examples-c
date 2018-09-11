@@ -299,12 +299,12 @@ bool EnterPageData(uint8_t *page_data)
 		printf("Enter 4 hexadecimal bytes\n");
 		scanf("%[^\n]%*c", str);
 		str_len = hex2bin(page_data, str);
-		if(str_len != 16)
+		if(str_len != 4)
 		{
 			printf("\nYou need to enter 4 hexadecimal numbers with or without spaces or with : as delimiter\n");
 			scanf("%[^\n]%*c", str);
 			str_len = hex2bin(page_data, str);
-			if(str_len != 16)
+			if(str_len != 4)
 				return false;
 		}
 		return true;
