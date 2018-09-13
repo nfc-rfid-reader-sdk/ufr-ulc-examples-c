@@ -51,7 +51,7 @@ void linear_write(void);
 void key_write(void);
 //------------------------------------------------------------------------------
 
-BOOL card_transceive_mode = FALSE;
+bool card_transceive_mode = false;
 
 int main(void)
 {
